@@ -3,68 +3,9 @@
 #include <sstream>
 #include <vector>
 
+#include "sched_sim.h"
 
-class Process
-{
-public:
-    Process(const int pid, const std::string &line) :
-            m_pid(0),
-            m_burst(0),
-            m_burst_remaining(0),
-            m_priority(0),
-            m_start(0)
-    {
-        m_pid = pid;
-
-        std::stringstream ss(line);
-        ss >> m_burst >> m_priority >> m_start;
-
-        m_burst_remaining = m_burst;
-    }
-
-    int get_pid() const
-    {
-        return m_pid;
-    }
-
-    int get_priority() const
-    {
-        return m_priority;
-    }
-
-    int get_burst_remaining() const
-    {
-        return m_burst_remaining;
-    }
-
-    bool done() const
-    {
-        return m_burst_remaining == 0;
-    }
-
-    bool ready(const int index) const
-    {
-        return index > m_start;
-    }
-
-    void run()
-    {
-        if ( ! done() )
-        {
-            m_burst_remaining--;
-        }
-    }
-
-private:
-    int m_pid;
-    int m_burst;
-    int m_burst_remaining;
-    int m_priority;
-    int m_start;
-};
-
-
-bool getProcesses(const std::string &filename, std::vector<Process> &processes)
+bool get_processes(const std::string &filename, std::vector<Process> &processes)
 {
     std::ifstream infile(filename, std::ios_base::in);
     if ( ! infile.is_open() )
@@ -76,82 +17,146 @@ bool getProcesses(const std::string &filename, std::vector<Process> &processes)
     processes.clear();
     for (std::string line; std::getline(infile, line); )
     {
-        processes.emplace_back(Process(int(processes.size()) + 1, line));
+        processes.emplace_back(Process(int(processes.size()), line));
     }
 
     return true;
 }
 
-
-void run_fcfs(std::vector<Process> &processes)
+void print_processes(std::vector<Process> &processes)
 {
-    int sim_index = 1;
-    bool done = false;
+    std::cout << "######################" << std::endl;
+    std::cout << "PID : Burst : Pri : Start" << std::endl;
 
-    // Loop until finished
-    while ( ! done )
+    for (auto &p: processes)
     {
-        // Need to know if no processes need this cycle
-        bool none = true;
-
-        // For each process
-        for ( auto &p: processes )
-        {
-            // If the process is ready
-            if ( p.ready(sim_index) )
-            {
-                // Mark the cycle as used
-                none = false;
-
-                // Non-premptive, run process until complete
-                while ( ! p.done() )
-                {
-                    p.run();
-
-                    std::cout << sim_index << ":  P" << p.get_pid() << " rem: " << p.get_burst_remaining() << std::endl;
-
-                    sim_index++;
-                }
-            }
-        }
-
-        // Check to see if we are done or not
-        done = true;
-        for ( auto &p: processes )
-        {
-            if ( ! p.done() )
-            {
-                done = false;
-                break;
-            }
-        }
-
-        // No processes ready
-        if (none)
-        {
-            sim_index++;
-        }
+        std::cout << " P" << p.get_pid()
+                  << " : " << p.get_burst_remaining()
+                  << " : " << p.get_priority()
+                  << " : " << p.get_start() << std::endl;
     }
+    std::cout << "######################" << std::endl;
+}
+
+void print_overall_summary(std::vector<std::string> &types, std::vector<Statistics> &stats)
+{
+    std::cout << "***** OVERALL SUMMARY *****" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Wait time comparison" << std::endl;
+    for ( unsigned long i = 0; i < types.size(); i++ )
+    {
+        std::cout << i+1 << "  " << types.at(i) << "  " << stats.at(i).m_wt_avg << std::endl;
+    }
+    std::cout << std::endl;
+
+    std::cout << "Turnaround time comparison" << std::endl;
+    for ( unsigned long i = 0; i < types.size(); i++ )
+    {
+        std::cout << i+1 << "  " << types.at(i) << "  " << stats.at(i).m_tt_avg << std::endl;
+    }
+    std::cout << std::endl;
+
+    std::cout << "Context switch comparison" << std::endl;
+    for ( unsigned long i = 0; i < types.size(); i++ )
+    {
+        std::cout << i+1 << "  " << types.at(i) << "  " << stats.at(i).m_context_switches << std::endl;
+    }
+    std::cout << std::endl;
+
 }
 
 
-int main()
+int main(const int argc, char** argv)
 {
-    std::string infilename = "../input.txt";
-    std::string outfilename = "../output.txt";
-
-    // Get the processes from the input file
-    std::vector<Process> processes;
-    if( ! getProcesses(infilename, processes) )
+    if (argc != 4)
     {
+        std::cout << "Usage: " << argv[0] << " <infile> <outfile> <print schedule>" << std::endl;
         return 1;
     }
 
-    // Run the simulation
-    run_fcfs(processes);
+    std::string infilename = argv[1];
+    std::string outfilename = argv[2];
 
-    // Print summary
+    int print_mod;
+    std::stringstream ss(argv[3]);
+    ss >> print_mod;
 
+    // Redirect cout to output file
+    std::ofstream out(outfilename);
+    std::cout.rdbuf(out.rdbuf());
+
+    std::vector<std::string> scheduling_types = {"fcfs", "sjf", "stcf", "rr", "npp"};
+    std::vector<Statistics> stats(scheduling_types.size());
+
+    for (unsigned long i = 0; i < scheduling_types.size(); i++)
+    {
+        // Get the processes from the input file
+        std::vector<Process> processes;
+        if (!get_processes(infilename, processes))
+        {
+            return 1;
+        }
+
+        std::cout << "****** " << scheduling_types.at(i) << " ******" << std::endl;
+
+        // Print the info that was read from the input file
+        print_processes(processes);
+
+        // Run the simulation  fcfs, sjf, stcf, rr, npp
+
+        int sim_index = 1;
+        bool done = false;
+
+        // Loop until finished
+        while ( ! done )
+        {
+            switch (i)
+            {
+                case 0:
+                    run_fcfs(sim_index, processes, stats.at(i));
+                    break;
+                case 1:
+                    run_sjf(sim_index, processes, stats.at(i));
+                    break;
+                case 2:
+                    run_stcf(sim_index, processes, stats.at(i));
+                    break;
+                case 3:
+                    run_rr(sim_index, processes, stats.at(i));
+                    break;
+                case 4:
+                    run_npp(sim_index, processes, stats.at(i));
+                    break;
+                default:
+                    break;
+            }
+
+            // Check to see if we are done simulating or not
+            done = true;
+            for ( auto &p: processes )
+            {
+                if ( ! p.done() )
+                {
+                    done = false;
+                    break;
+                }
+            }
+
+            // Print what is happening
+            if ( (sim_index-1) % print_mod == 0 )
+            {
+                stats.at(i).print_statistics(sim_index, processes);
+            }
+
+            sim_index++;
+        }
+
+        // Print summary
+        stats.at(i).print_summary(processes);
+    }
+
+    // Print overall summary
+    print_overall_summary(scheduling_types, stats);
 
     return 0;
 }
