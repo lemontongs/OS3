@@ -8,7 +8,7 @@
 class Process
 {
 public:
-    Process(int pid, const std::__cxx11::string &line);
+    Process(int pid, const std::string &line);
 
     int get_pid() const;
     int get_priority() const;
