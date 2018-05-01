@@ -10,7 +10,7 @@
 #include <iterator>
 #include "sched_sim.h"
 
-Process::Process(const int pid, const std::__cxx11::string &line) :
+Process::Process(const int pid, const std::string &line) :
         m_pid(0),
         m_burst(0),
         m_burst_remaining(0),
